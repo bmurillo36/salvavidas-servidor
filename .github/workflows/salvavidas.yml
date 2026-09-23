@@ -1,0 +1,74 @@
+# Salvavidas del VPS de Claude Movil (212.227.168.72).
+# Si el servidor se congela, nada de lo que corre DENTRO puede reiniciarlo:
+# este vigilante vive fuera, en GitHub.
+#   - Cada 5 min mira si https://code.prevencion.cc responde.
+#   - Si falla 3 veces seguidas en 2 minutos, lo reinicia por la API de IONOS.
+#   - Nunca dos reinicios en menos de 2 horas (si tras reiniciar sigue caido,
+#     no es un cuelgue y reiniciar en bucle lo empeoraria).
+#   - Al reiniciar, el trabajo FALLA a proposito: asi GitHub te manda un correo.
+#   - A mano, desde la app de GitHub: Actions -> Salvavidas -> Run workflow y
+#     escribir REINICIAR.
+# Secretos (Settings -> Secrets -> Actions): IONOS_TOKEN (token de la API del
+# Cloud Panel de IONOS) y SERVIDOR_ID (id del VPS en esa API).
+name: Salvavidas del VPS
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+    - cron: '17 4 * * 1'   # latido semanal: GitHub apaga los cron de repos sin movimiento en 60 dias
+  workflow_dispatch:
+    inputs:
+      reiniciar_ya:
+        description: 'Escribe REINICIAR para reiniciar el VPS ahora'
+        required: false
+        default: ''
+permissions:
+  contents: write
+concurrency:
+  group: salvavidas
+  cancel-in-progress: false
+jobs:
+  vigilar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Latido semanal
+        if: github.event.schedule == '17 4 * * 1'
+        run: |
+          date -u > latido.txt
+          git config user.name salvavidas && git config user.email bmurillo36@yahoo.es
+          git add latido.txt && git commit -m "latido $(date -u +%F)" && git push
+
+      - name: Mirar si el servidor responde
+        id: mirar
+        run: |
+          for i in 1 2 3; do
+            c=$(curl -s -o /dev/null -m 20 -w '%{http_code}' https://code.prevencion.cc/ || true)
+            echo "intento $i: $c"
+            case "$c" in 2*|3*|401) echo "vivo=si" >> "$GITHUB_OUTPUT"; exit 0;; esac
+            [ "$i" -lt 3 ] && sleep 60
+          done
+          echo "vivo=no" >> "$GITHUB_OUTPUT"
+
+      - name: Reiniciar el VPS
+        if: steps.mirar.outputs.vivo == 'no' || github.event.inputs.reiniciar_ya == 'REINICIAR'
+        env:
+          IONOS_TOKEN: ${{ secrets.IONOS_TOKEN }}
+          SERVIDOR_ID: ${{ secrets.SERVIDOR_ID }}
+          A_MANO: ${{ github.event.inputs.reiniciar_ya }}
+        run: |
+          if [ -z "$IONOS_TOKEN" ] || [ -z "$SERVIDOR_ID" ]; then echo "Faltan los secretos IONOS_TOKEN / SERVIDOR_ID: no se puede reiniciar."; exit 1; fi
+          ahora=$(date +%s); ultimo=$(cat ultimo-reinicio.txt 2>/dev/null || echo 0)
+          if [ "$A_MANO" != "REINICIAR" ] && [ $((ahora - ultimo)) -lt 7200 ]; then
+            echo "Ya se reinicio hace menos de 2 horas y sigue sin responder: NO se repite. Mira el panel de IONOS."; exit 1
+          fi
+          # Colgado del todo no atiende a un reinicio suave: HARDWARE. A mano, SOFTWARE (ordenado).
+          metodo=HARDWARE; [ "$A_MANO" = "REINICIAR" ] && metodo=SOFTWARE
+          respuesta=$(curl -s -w ' HTTP %{http_code}' -X PUT "https://cloudpanel-api.ionos.com/v1/servers/$SERVIDOR_ID/status/action" \
+            -H "X-TOKEN: $IONOS_TOKEN" -H 'Content-Type: application/json' -d "{\"action\":\"REBOOT\",\"method\":\"$metodo\"}")
+          echo "IONOS: $respuesta"
+          echo "$ahora" > ultimo-reinicio.txt
+          git config user.name salvavidas && git config user.email bmurillo36@yahoo.es
+          git add ultimo-reinicio.txt && git commit -m "reinicio ($metodo) $(date -u)" && git push
+          echo "REINICIADO ($metodo). Falla a proposito para que GitHub te mande un correo."; exit 1
