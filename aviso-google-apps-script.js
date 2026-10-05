@@ -1,4 +1,4 @@
-// Aviso de caida del VPS (212.227.168.72) desde Google Apps Script.
+// Aviso de caida del VPS (217.160.143.88) desde Google Apps Script.
 // IONOS no permite reiniciar este VPS por API (confirmado por su soporte el 26/09/2026),
 // asi que esto solo AVISA: un correo al caer y otro al volver. Reiniciar = a mano en cloudpanel.ionos.es.
 // Se instala una vez ejecutando instalar(); despues corre solo cada 5 minutos.
@@ -27,7 +27,7 @@ function vigilar() {
   if (vivo) {
     if (avisado) {
       MailApp.sendEmail(PARA, 'VPS: VUELVE a responder (' + ahora + ')',
-        'El servidor 212.227.168.72 vuelve a responder a las ' + ahora + '.\n\nAviso automatico (Google Apps Script «Aviso caida VPS»).');
+        'El servidor 217.160.143.88 vuelve a responder a las ' + ahora + '.\n\nAviso automatico (Google Apps Script «Aviso caida VPS»).');
     }
     p.setProperties({ fallos: '0', avisado: 'no' });
     return;
@@ -40,7 +40,7 @@ function vigilar() {
       'Ni ' + WEBS.join(' ni ') + ' responden.\n\n' +
       'Para reiniciarlo:\n' +
       '1. https://cloudpanel.ionos.es (cliente 52704917)\n' +
-      '2. Infraestructura -> Servidores -> marcar «My VPS» (212.227.168.72)\n' +
+      '2. Infraestructura -> Servidores -> marcar «My VPS» (217.160.143.88)\n' +
       '3. Acciones -> Reiniciar. NUNCA «Reinstalar imagen».\n\n' +
       'Cuando vuelva a responder te llegara otro correo.\n\nAviso automatico (Google Apps Script «Aviso caida VPS»).');
     p.setProperty('avisado', 'si');
